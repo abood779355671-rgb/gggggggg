@@ -4,5 +4,10 @@ redis
 pytz
 Pillow
 httpx
+h2
 flask
+meval
+pytio
 psutil
+py-cpuinfo
+requests
