@@ -14,5 +14,4 @@ requests
 yt-dlp
 pytube
 youtube-search-python
-shazamio
 wget
