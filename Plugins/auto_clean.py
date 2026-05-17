@@ -1,0 +1,202 @@
+"""
+ملف auto_clean.py - نظام التنظيف التلقائي للوسائط
+الأوامر المتاحة:
+  تفعيل التنظيف              → تفعيل حذف الوسائط تلقائياً بعد المدة المحددة (مالك أساسي+)
+  تعطيل التنظيف              → إيقاف التنظيف التلقائي (مالك أساسي+)
+  وضع وقت التنظيف [ثواني]   → تحديد مدة الانتظار قبل الحذف (60-3600 ثانية) (مالك أساسي+)
+  وقت التنظيف                → عرض المدة الحالية المضبوطة (مالك أساسي+)
+
+إصلاح: الرسائل المعلقة تُحفظ في Redis وتُستعاد عند إعادة التشغيل
+"""
+
+import asyncio
+import logging
+import re
+import time as _time
+from datetime import datetime, timedelta
+
+from pyrogram import Client, filters
+from pyrogram.errors import FloodWait
+from pyrogram.types import Message
+
+from config import r, DEV_ID, botkey
+from helpers.ranks import is_gowner
+from helpers.utils import group_enabled, resolve_text
+
+
+# ────────────────────────────────────────────────────────────
+# مساعدات Redis للرسائل المعلقة
+# نستخدم Sorted Set: key="{DEV_ID}:{chat_id}:pending-clean"
+#   score = unix timestamp وقت الحذف
+#   member = message_id
+# ────────────────────────────────────────────────────────────
+
+def _pending_key(chat_id: int) -> str:
+    return f"{DEV_ID}:{chat_id}:pending-clean"
+
+
+def _schedule_delete(chat_id: int, msg_id: int, delete_at: datetime):
+    """جدولة رسالة للحذف - تُحفظ في Redis"""
+    score = delete_at.timestamp()
+    r.zadd(_pending_key(chat_id), {str(msg_id): score})
+    # TTL للمفتاح كله = وقت الحذف + ساعة احتياط
+    ttl = int(score - _time.time()) + 3600
+    if ttl > 0:
+        r.expire(_pending_key(chat_id), ttl)
+
+
+def _get_due_messages(chat_id: int) -> list[int]:
+    """جلب رسائل حان وقت حذفها"""
+    now = _time.time()
+    members = r.zrangebyscore(_pending_key(chat_id), 0, now)
+    if members:
+        r.zremrangebyscore(_pending_key(chat_id), 0, now)
+    return [int(m) for m in members]
+
+
+def _get_all_pending_chats() -> list[int]:
+    """جلب كل chat_ids التي فيها رسائل معلقة"""
+    pattern = f"{DEV_ID}:*:pending-clean"
+    keys = r.keys(pattern)
+    chats = []
+    for k in keys:
+        try:
+            # استخراج chat_id من المفتاح
+            parts = k.split(":")
+            chats.append(int(parts[1]))
+        except (IndexError, ValueError):
+            pass
+    return chats
+
+
+# ────────────────────────────────────────────────────────────
+# جمع الرسائل الواردة
+# ────────────────────────────────────────────────────────────
+
+@Client.on_message(filters.group & filters.media, group=1)
+async def _collect_media(c: Client, m: Message):
+    if not group_enabled(m.chat.id):
+        return
+
+    # تخطي الصوت والفويس والألعاب
+    if m.audio or m.voice or m.game:
+        return
+
+    if not r.get(f"{DEV_ID}:{m.chat.id}:ena-clean"):
+        return
+
+    secs = int(r.get(f"{DEV_ID}:{m.chat.id}:clean-secs") or "60")
+    delete_at = datetime.now() + timedelta(seconds=secs)
+
+    if m.media_group_id:
+        try:
+            group_msgs = await c.get_media_group(m.chat.id, m.id)
+            for gm in group_msgs:
+                _schedule_delete(m.chat.id, gm.id, delete_at)
+        except Exception:
+            _schedule_delete(m.chat.id, m.id, delete_at)
+    else:
+        _schedule_delete(m.chat.id, m.id, delete_at)
+
+
+# ────────────────────────────────────────────────────────────
+# حلقة الحذف التلقائي
+# ────────────────────────────────────────────────────────────
+
+logger = logging.getLogger("auto_clean")
+
+async def _auto_clean_loop(client: Client):
+    """
+    تدور كل 5 ثوانٍ وتحذف الرسائل التي حان وقتها.
+    البيانات محفوظة في Redis — لا تُفقد عند إعادة التشغيل.
+    """
+    logger.info("الحلقة تعمل")
+    while True:
+        try:
+            await asyncio.sleep(5)
+            chats = _get_all_pending_chats()
+            if not chats:
+                continue
+
+            for chat_id in chats:
+                to_delete = _get_due_messages(chat_id)
+                if not to_delete:
+                    continue
+                try:
+                    await client.delete_messages(chat_id, to_delete)
+                    logger.debug("حذف %d رسالة من %s", len(to_delete), chat_id)
+                except FloodWait as fw:
+                    await asyncio.sleep(fw.value)
+                    try:
+                        await client.delete_messages(chat_id, to_delete)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    logger.warning("خطأ حذف: %s", e)
+
+        except Exception as e:
+            logger.error("خطأ عام: %s", e)
+
+
+# ────────────────────────────────────────────────────────────
+# أوامر التحكم
+# ────────────────────────────────────────────────────────────
+
+@Client.on_message(filters.group & filters.text, group=37)
+async def clean_commands(c: Client, m: Message):
+    if not m.from_user:
+        return
+    if not group_enabled(m.chat.id):
+        return
+
+    text = resolve_text(m.text, m.chat.id)
+    k = botkey()
+    uid = m.from_user.id
+    cid = m.chat.id
+    mention = m.from_user.mention
+
+    async def need_gowner():
+        if not is_gowner(uid, cid):
+            await m.reply(f"{k} هذا الأمر يخص ( المالك الأساسي وفوق ) بس")
+            return True
+        return False
+
+    # ── تعطيل التنظيف ──
+    if text == "تعطيل التنظيف":
+        if await need_gowner(): return
+        if not r.get(f"{DEV_ID}:{cid}:ena-clean"):
+            return await m.reply(f"{k} من 「 {mention} 」\n{k} التنظيف معطّل من قبل\n☆")
+        r.delete(f"{DEV_ID}:{cid}:ena-clean")
+        # مسح الرسائل المعلقة من Redis
+        r.delete(_pending_key(cid))
+        return await m.reply(f"{k} من 「 {mention} 」\n{k} ابشر عطّلت التنظيف\n☆")
+
+    # ── تفعيل التنظيف ──
+    if text == "تفعيل التنظيف":
+        if await need_gowner(): return
+        if r.get(f"{DEV_ID}:{cid}:ena-clean"):
+            return await m.reply(f"{k} من 「 {mention} 」\n{k} التنظيف مفعّل من قبل\n☆")
+        r.set(f"{DEV_ID}:{cid}:ena-clean", 1)
+        return await m.reply(f"{k} من 「 {mention} 」\n{k} ابشر فعّلت التنظيف\n☆")
+
+    # ── وضع وقت التنظيف [ثواني] ──
+    if re.search(r"^وضع وقت التنظيف \d+$", text):
+        if await need_gowner(): return
+        secs = int(text.split()[-1])
+        if secs < 60 or secs > 3600:
+            return await m.reply(f"{k} عليك تحديد وقت التنظيف بالثواني من 60 إلى 3600 ثانية")
+        r.set(f"{DEV_ID}:{cid}:clean-secs", secs)
+        return await m.reply(f"{k} تم تعيين وقت التنظيف ( {secs} ) ثانية")
+
+    # ── وقت التنظيف ──
+    if text == "وقت التنظيف":
+        if await need_gowner(): return
+        secs = r.get(f"{DEV_ID}:{cid}:clean-secs") or "60"
+        status = "مفعّل ✅" if r.get(f"{DEV_ID}:{cid}:ena-clean") else "معطّل ❌"
+        pending_count = r.zcard(_pending_key(cid)) or 0
+        return await m.reply(
+            f"{k} إعدادات التنظيف:\n"
+            f"الحالة: {status}\n"
+            f"مدة الانتظار: `{secs}` ثانية\n"
+            f"رسائل معلقة: `{pending_count}`"
+        )
