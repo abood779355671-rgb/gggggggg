@@ -165,16 +165,18 @@ async def whisper_private_text(c: Client, m: Message):
 # ─────────────────────────────────────────────────────────────────────────
 
 @Client.on_message(
-    filters.text & filters.group & filters.reply,
-    group=15
+    filters.text & filters.group,
+    group=1
 )
 async def group_whisper_trigger(c: Client, m: Message):
-    txt = m.text.strip()
+    if not m.from_user:
+        return
+    txt = (m.text or "").strip()
     # يشتغل فقط إذا الرسالة هي كلمة "اهمس" بالضبط
     if txt != "اهمس":
         return
 
-    # لازم يكون رداً على رسالة شخص ثاني (مو على نفسه)
+    # لازم يكون رداً على رسالة شخص آخر
     replied = m.reply_to_message
     if not replied or not replied.from_user:
         return
