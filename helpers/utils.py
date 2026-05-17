@@ -12,8 +12,8 @@ from helpers.ranks import is_admin
 #   _RTXT_TTL  = 30 ثانية — لـ custom text aliases (تتغير نادراً)
 # ─────────────────────────────────────────────────────────────────────────
 _utils_cache: dict = {}
-_UTILS_TTL  = 3
-_RTXT_TTL   = 30
+_UTILS_TTL  = 30  # رُفع من 3 → 30 ثانية — group_enabled لا يتغير كثيراً
+_RTXT_TTL   = 5
 
 
 def _bool_cached(key: str) -> bool:
