@@ -161,6 +161,68 @@ async def whisper_private_text(c: Client, m: Message):
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# همسة داخل القروب — يكتب "اهمس" رداً على رسالة شخص
+# ─────────────────────────────────────────────────────────────────────────
+
+@Client.on_message(
+    filters.text & filters.group & filters.reply,
+    group=15
+)
+async def group_whisper_trigger(c: Client, m: Message):
+    txt = m.text.strip()
+    # يشتغل فقط إذا الرسالة هي كلمة "اهمس" بالضبط
+    if txt != "اهمس":
+        return
+
+    # لازم يكون رداً على رسالة شخص ثاني (مو على نفسه)
+    replied = m.reply_to_message
+    if not replied or not replied.from_user:
+        return
+
+    target    = replied.from_user
+    sender    = m.from_user
+    chat_id   = m.chat.id
+
+    # احذف رسالة "اهمس" من القروب فوراً
+    try:
+        await m.delete()
+    except Exception:
+        pass
+
+    bot_me       = await c.get_me()
+    bot_username = bot_me.username
+    sender_uname = sender.username or str(sender.id)
+    target_uname = target.username or str(target.id)
+
+    # أرسل رسالة في القروب مع زر "اهمس هنا"
+    markup = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            "🛡️ اهمس هنا",
+            url=f"https://t.me/{bot_username}?start=w_{target_uname}"
+        )
+    ]])
+
+    sent = await c.send_message(
+        chat_id,
+        f"• تم تحديد الهمسه لـ **{target.first_name}** ←\n"
+        f"• اضغط الزر لكتابة الهمسة\n"
+        f"-",
+        reply_markup=markup,
+        parse_mode=ParseMode.MARKDOWN,
+    )
+
+    # احذف رسالة البوت من القروب بعد 30 ثانية
+    import asyncio
+    async def _delete_later():
+        await asyncio.sleep(30)
+        try:
+            await sent.delete()
+        except Exception:
+            pass
+    asyncio.get_event_loop().create_task(_delete_later())
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # inline query — همسة
 # ─────────────────────────────────────────────────────────────────────────
 
