@@ -16,4 +16,4 @@ youtube-search-python
 wget
 
 shazamio==0.4.0
-numpy>=2.0.0
+numpy>=1.24.0,<2.0.0
