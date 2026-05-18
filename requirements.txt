@@ -15,4 +15,4 @@ yt-dlp
 youtube-search-python
 wget
 
-shazamio
+shazamio==0.4.0
