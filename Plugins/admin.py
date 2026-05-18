@@ -47,8 +47,8 @@ async def cmd_start(c: Client, m: Message):
         "• فلتر الكلمات السيئة\n\n"
         f"لتفعيلي في مجموعتك: ارفعني مشرفاً ثم أرسل **تفعيل**",
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("قناة البوت 📢", url=f"https://t.me/{await ar.get(str(DEV_ID)+":BotChannel") or "telegram"}"),
-        ]])
+            _channel = await ar.get(str(DEV_ID) + ":BotChannel") or "telegram"
+InlineKeyboardButton("قناة البوت 📢", url=f"https://t.me/{_channel}"),
     )
 
 
