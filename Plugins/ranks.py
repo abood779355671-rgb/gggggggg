@@ -97,7 +97,8 @@ def _get_rank_level(uid: int, cid: int) -> int:
 
     # أول مرة — شغّل تحديثاً async في الخلفية واستخدم 0 مبدئياً
     # (يتجنب أي blocking لـ event loop)
-    su, sc = str(uid), str(cid)\n    # افتراضي = عضو عادي ريثما يُحدَّث الكاش async
+    su, sc = str(uid), str(cid)
+# افتراضي = عضو عادي ريثما يُحدَّث الكاش async
     level = 9 if su == str(DEV_ID) else 0
     _rank_cache_cleanup()
     _rank_cache[cache_key] = (level, now - _RANK_TTL + 1)  # يمتد ثانية واحدة فقط
