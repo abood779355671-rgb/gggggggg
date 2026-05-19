@@ -12,7 +12,7 @@ psutil
 py-cpuinfo
 requests
 yt-dlp
-youtube-search-python
+youtube-search
 wget
 
 shazamio==0.4.0
