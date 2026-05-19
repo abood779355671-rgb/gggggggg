@@ -121,10 +121,18 @@ async def downloader_handler(c: Client, m: Message):
 
     # ── يوت [بحث] → قائمة نتائج ─────────────────────────────────────────
     if text.startswith("يوت ") and YTSEARCH_OK:
+        logger.info(f"[يوت] cid={cid} uid={uid} text={text!r}")
         if await ar.get(f"{cid}:disableYT:{DEV_ID}") or await ar.get(f":disableYT:{DEV_ID}"):
+            logger.info("[يوت] YT disabled for this group")
             return
         query = text.split(None, 1)[1]
-        results = await _yt_search(query, limit=4)
+        logger.info(f"[يوت] searching: {query!r}")
+        try:
+            results = await _yt_search(query, limit=4)
+        except Exception as e:
+            logger.error(f"[يوت] search error: {e}")
+            return await m.reply(f"فشل البحث: {e}")
+        logger.info(f"[يوت] got {len(results)} results")
         keyboard = []
         for res in results:
             keyboard.append([InlineKeyboardButton(
@@ -141,10 +149,18 @@ async def downloader_handler(c: Client, m: Message):
 
     # ── بحث [كلمة] / yt [كلمة] → أول نتيجة صوت ──────────────────────────
     if (text.startswith("بحث ") or text.startswith("yt ")) and YTSEARCH_OK:
+        logger.info(f"[بحث] cid={cid} uid={uid} text={text!r}")
         if await ar.get(f"{cid}:disableYT:{DEV_ID}") or await ar.get(f":disableYT:{DEV_ID}"):
+            logger.info("[بحث] YT disabled for this group")
             return
         query = text.split(None, 1)[1]
-        results = await _yt_search(query, limit=1)
+        logger.info(f"[بحث] searching: {query!r}")
+        try:
+            results = await _yt_search(query, limit=1)
+        except Exception as e:
+            logger.error(f"[بحث] search error: {e}")
+            return await m.reply(f"فشل البحث: {e}")
+        logger.info(f"[بحث] got {len(results)} results")
         if not results:
             return await m.reply(f"{k} ما لقيت نتائج")
         res = results[0]
