@@ -31,7 +31,7 @@ from helpers.ranks import is_admin
 from helpers.utils import group_enabled, can_speak, resolve_text
 
 try:
-    from youtube_search import YoutubeSearch as YTSearch
+    from youtubesearchpython import VideosSearch as YTSearch
     YTSEARCH_OK = True
 except Exception:
     YTSEARCH_OK = False
@@ -112,7 +112,7 @@ async def downloader_handler(c: Client, m: Message):
         if await ar.get(f"{cid}:disableYT:{DEV_ID}") or await ar.get(f":disableYT:{DEV_ID}"):
             return
         query = text.split(None, 1)[1]
-        results = YTSearch(query, max_results=4).to_dict()
+        results = (await YTSearch(query, limit=4).next())["result"]
         keyboard = []
         for res in results:
             keyboard.append([InlineKeyboardButton(
@@ -132,7 +132,7 @@ async def downloader_handler(c: Client, m: Message):
         if await ar.get(f"{cid}:disableYT:{DEV_ID}") or await ar.get(f":disableYT:{DEV_ID}"):
             return
         query = text.split(None, 1)[1]
-        results = YTSearch(query, max_results=1).to_dict()
+        results = (await YTSearch(query, limit=1).next())["result"]
         if not results:
             return await m.reply(f"{k} ما لقيت نتائج")
         res = results[0]
