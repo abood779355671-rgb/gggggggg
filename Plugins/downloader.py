@@ -34,24 +34,28 @@ YTSEARCH_OK = True  # yt-dlp يدعم البحث مباشرة
 
 
 async def _yt_search(query: str, limit: int = 4) -> list:
-    """بحث يوتيوب باستخدام yt-dlp مباشرة بدون مكتبة خارجية"""
-    opts = {
-        "quiet": True,
-        "extract_flat": "in_playlist",
-        "default_search": f"ytsearch{limit}",
-        "skip_download": True,
-        "no_warnings": True,
-    }
+    """بحث يوتيوب باستخدام yt-dlp مباشرة"""
     loop = asyncio.get_running_loop()
     def _search():
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
-            logger.info(f"[_yt_search] raw type={type(info)} keys={list(info.keys()) if info else None}")
-            entries = info.get("entries", []) if info else []
-            logger.info(f"[_yt_search] entries count={len(entries)}")
-            if entries:
-                logger.info(f"[_yt_search] first entry keys={list(entries[0].keys()) if entries[0] else None}")
-            return entries
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": True,
+            "skip_download": True,
+        }
+        url = f"ytsearch{limit}:{query}"
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                logger.info(f"[_yt_search] info type={type(info).__name__}, keys={list(info.keys()) if info else 'None'}")
+                if not info:
+                    return []
+                entries = info.get("entries") or []
+                logger.info(f"[_yt_search] entries={len(entries)}, first={entries[0] if entries else 'empty'}")
+                return [e for e in entries if e and e.get("id")]
+        except Exception as e:
+            logger.error(f"[_yt_search] exception: {e}")
+            return []
     return await loop.run_in_executor(None, _search)
 
 try:
