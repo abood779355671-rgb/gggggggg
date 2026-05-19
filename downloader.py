@@ -30,11 +30,23 @@ logger = logging.getLogger("downloader")
 from helpers.ranks import is_admin
 from helpers.utils import group_enabled, can_speak, resolve_text
 
-try:
-    from youtubesearchpython import VideosSearch as YTSearch
-    YTSEARCH_OK = True
-except Exception:
-    YTSEARCH_OK = False
+YTSEARCH_OK = True  # yt-dlp يدعم البحث مباشرة
+
+
+async def _yt_search(query: str, limit: int = 4) -> list:
+    """بحث يوتيوب باستخدام yt-dlp مباشرة بدون مكتبة خارجية"""
+    opts = {
+        "quiet": True,
+        "extract_flat": True,
+        "default_search": f"ytsearch{limit}",
+        "skip_download": True,
+    }
+    loop = asyncio.get_running_loop()
+    def _search():
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(query, download=False)
+            return info.get("entries", [])
+    return await loop.run_in_executor(None, _search)
 
 try:
     from shazamio import Shazam
@@ -112,11 +124,11 @@ async def downloader_handler(c: Client, m: Message):
         if await ar.get(f"{cid}:disableYT:{DEV_ID}") or await ar.get(f":disableYT:{DEV_ID}"):
             return
         query = text.split(None, 1)[1]
-        results = (await YTSearch(query, limit=4).next())["result"]
+        results = await _yt_search(query, limit=4)
         keyboard = []
         for res in results:
             keyboard.append([InlineKeyboardButton(
-                res["title"][:60],
+                (res.get("title") or "")[:60],
                 callback_data=f"{uid}GET{res['id']}"
             )])
         sent = await m.reply(
@@ -132,7 +144,7 @@ async def downloader_handler(c: Client, m: Message):
         if await ar.get(f"{cid}:disableYT:{DEV_ID}") or await ar.get(f":disableYT:{DEV_ID}"):
             return
         query = text.split(None, 1)[1]
-        results = (await YTSearch(query, limit=1).next())["result"]
+        results = await _yt_search(query, limit=1)
         if not results:
             return await m.reply(f"{k} ما لقيت نتائج")
         res = results[0]
