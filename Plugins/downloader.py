@@ -37,15 +37,21 @@ async def _yt_search(query: str, limit: int = 4) -> list:
     """بحث يوتيوب باستخدام yt-dlp مباشرة بدون مكتبة خارجية"""
     opts = {
         "quiet": True,
-        "extract_flat": True,
+        "extract_flat": "in_playlist",
         "default_search": f"ytsearch{limit}",
         "skip_download": True,
+        "no_warnings": True,
     }
     loop = asyncio.get_running_loop()
     def _search():
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(query, download=False)
-            return info.get("entries", [])
+            info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+            logger.info(f"[_yt_search] raw type={type(info)} keys={list(info.keys()) if info else None}")
+            entries = info.get("entries", []) if info else []
+            logger.info(f"[_yt_search] entries count={len(entries)}")
+            if entries:
+                logger.info(f"[_yt_search] first entry keys={list(entries[0].keys()) if entries[0] else None}")
+            return entries
     return await loop.run_in_executor(None, _search)
 
 try:
